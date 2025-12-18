@@ -82,16 +82,13 @@ class LidarSectorNode(Node):
             return min(valid) if valid else 10.0 
 
         sector_msg = Float32MultiArray()
-        # Order: NO, NW, WE, SW, SO, SE, ES, NE (Indices 0 to 7)
+        # Order: NW, NO, NE, ES, WE
         sector_msg.data = [
-            get_min_dist_val(sector_data["NO"]),
             get_min_dist_val(sector_data["NW"]),
-            get_min_dist_val(sector_data["WE"]),
-            get_min_dist_val(sector_data["SW"]),
-            get_min_dist_val(sector_data["SO"]),
-            get_min_dist_val(sector_data["SE"]),
+            get_min_dist_val(sector_data["NO"]),
+            get_min_dist_val(sector_data["NE"]),
             get_min_dist_val(sector_data["ES"]),
-            get_min_dist_val(sector_data["NE"])
+            get_min_dist_val(sector_data["WE"])   
         ]
         self.sector_pub.publish(sector_msg)
 
