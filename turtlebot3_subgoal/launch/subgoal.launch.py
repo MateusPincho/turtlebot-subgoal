@@ -6,3 +6,64 @@ Este launch deve:
 - Iniciar o go to goal para publicar o cmd vel
 '''
 
+import os
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+
+def generate_launch_description():
+
+    # Launch arguments
+    use_sim_time = LaunchConfiguration('use_sim_time', default='false')
+
+     use_sim_time_arg = DeclareLaunchArgument(
+        "use_sim_time",
+        default_value="false"
+    )
+    
+    # Locate the standard TurtleBot3 Cartographer package
+    cartographer_pkg_dir = get_package_share_directory('turtlebot3_cartographer')
+    cartographer_launch_dir = os.path.join(cartographer_pkg_dir, 'launch')
+
+    # Include external launch
+    cartographer_cmd = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(cartographer_launch_dir, 'cartographer.launch.py')
+        ),
+        launch_arguments={
+            'use_sim_time': use_sim_time,
+        }.items()
+    )
+
+    lidar_distance_node = Node(
+        package='turtlebot3_subgoal',          
+        executable='lidar_distance',     
+        name='lidar_distance',
+        output='screen'
+    )
+
+    fuzzy_planner_node = Node(
+        package='turtlebot3_subgoal',   
+        executable='fuzzy_planner',
+        name='fuzzy_planner',
+        output='screen'
+    )
+
+    go_to_goal_node = Node(
+        package='turtlebot3_subgoal',   
+        executable='go_to_goal',
+        name='go_to_goal',
+        output='screen'
+    )
+
+    return LaunchDescription([
+        use_sim_time_arg
+        cartographer_cmd,
+        lidar_distance_node,
+        fuzzy_planner_node,
+        go_to_goal_node
+    ])
