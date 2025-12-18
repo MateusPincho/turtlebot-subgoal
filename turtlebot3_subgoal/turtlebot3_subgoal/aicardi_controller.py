@@ -35,21 +35,20 @@ class Aicardi(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        def get_robot_pose(self):
+    def get_robot_pose(self):
 
-            # Get the latest available transform from /map to /base_link    
-            t = self.tf_buffer.lookup_transform(
-                    'map',
-                    'base_link',
-                    rclpy.time.Time())
+        # Get the latest available transform from /map to /base_link    
+        t = self.tf_buffer.lookup_transform(
+                'map',
+                'base_link',
+                rclpy.time.Time())
 
-            # Extract Position
-            x = t.transform.translation.x
-            y = t.transform.translation.y
-            theta = get_yaw_from_quaternion(t.transform.rotatation)
-            
-            return x, y, theta
-
+        # Extract Position
+        x = t.transform.translation.x
+        y = t.transform.translation.y
+        theta = get_yaw_from_quaternion(t.transform.rotatation)
+        
+        return x, y, theta
 
     def target_pose_callback(self, msg):
         self.target_pose = msg
