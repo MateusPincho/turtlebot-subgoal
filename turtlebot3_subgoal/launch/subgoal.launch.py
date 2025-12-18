@@ -20,7 +20,7 @@ def generate_launch_description():
     # Launch arguments
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
 
-     use_sim_time_arg = DeclareLaunchArgument(
+    use_sim_time_arg = DeclareLaunchArgument(
         "use_sim_time",
         default_value="false"
     )
@@ -61,7 +61,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        use_sim_time_arg
+        use_sim_time_arg,
         cartographer_cmd,
         lidar_distance_node,
         fuzzy_planner_node,
