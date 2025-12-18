@@ -1,12 +1,10 @@
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import LaserScan
 from rclpy.qos import qos_profile_sensor_data, QoSProfile
-
-# Imports for Visualization
+from sensor_msgs.msg import LaserScan
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point
-from std_msgs.msg import ColorRGBA
+from std_msgs.msg import ColorRGBA, Float32MultiArray
 
 import math
 
@@ -14,20 +12,22 @@ class LidarSectorNode(Node):
     def __init__(self):
         super().__init__('lidar_sector_node')
         
-        # 1. Subscriber (Sensors - Best Effort)
+        # Subscriber (Sensors - Best Effort)
         self.subscription = self.create_subscription(
             LaserScan,
             '/scan',
             self.listener_callback,
             qos_profile_sensor_data)
 
-        # 2. Publisher (Markers - Reliable)
+        # Publish Markers for visualization in RVIZ
         self.marker_pub = self.create_publisher(MarkerArray, 'sector_markers', 10)
+        
+        # Publish the Lidar Sectors distance
+        self.sector_pub = self.create_publisher(Float32MultiArray, '/lidar_sectors', 10)
 
         self.get_logger().info('Lidar Sector Node with Visualization started.')
 
         # Define center angles for visualization (in radians)
-        # Assuming ROS Standard: X=Forward (0), Y=Left (+90)
         self.sector_angles = {
             "NO": 0.0,             # North (Front)
             "NW": math.pi / 4,     # North-West (+45 deg)
@@ -45,24 +45,24 @@ class LidarSectorNode(Node):
         angle_increment = msg.angle_increment
         
         def angle_to_index(angle_rad):
-            # Normalize angle to [0, 2pi] for index calculation if needed
-            # But simpler logic: (angle - min) / inc
+            # logic: (angle - min) / inc
             return int((angle_rad - angle_min) / angle_increment)
 
         sector_step = math.pi / 4.0  # 45 degrees
         half_sector = sector_step / 2.0 
 
-        # --- SECTOR CALCULATION (Same as before) ---
+        # --- SECTOR CALCULATION ---
+
         sector_data = {}
 
-        # 1. NO (North) - Handling Wrap around
+        # NO (North) 
         idx_no_start_1 = angle_to_index(2 * math.pi - half_sector)
         idx_no_end_1   = len(ranges)
         idx_no_start_2 = 0
         idx_no_end_2   = angle_to_index(half_sector)
         sector_data["NO"] = ranges[idx_no_start_1:idx_no_end_1] + ranges[idx_no_start_2:idx_no_end_2]
 
-        # 2. Others
+        # Others Directions
         sectors_order = ["NW", "WE", "SW", "SO", "SE", "ES", "NE"]
         current_angle = half_sector
         for sector_name in sectors_order:
@@ -73,13 +73,36 @@ class LidarSectorNode(Node):
             sector_data[sector_name] = ranges[start_idx:end_idx]
             current_angle += sector_step
 
+        # --- DATA PUBLICATION ---
+        
+        # Helper to find min distance for data logic
+        # If clear, we return a large value (10.0m) so fuzzy logic sees it as "Far"
+        def get_min_dist_val(data_list):
+            valid = [x for x in data_list if not math.isnan(x) and not math.isinf(x) and x > msg.range_min]
+            return min(valid) if valid else 10.0 
+
+        sector_msg = Float32MultiArray()
+        # Order: NO, NW, WE, SW, SO, SE, ES, NE (Indices 0 to 7)
+        sector_msg.data = [
+            get_min_dist_val(sector_data["NO"]),
+            get_min_dist_val(sector_data["NW"]),
+            get_min_dist_val(sector_data["WE"]),
+            get_min_dist_val(sector_data["SW"]),
+            get_min_dist_val(sector_data["SO"]),
+            get_min_dist_val(sector_data["SE"]),
+            get_min_dist_val(sector_data["ES"]),
+            get_min_dist_val(sector_data["NE"])
+        ]
+        self.sector_pub.publish(sector_msg)
+
         # --- VISUALIZATION GENERATION ---
         marker_array = MarkerArray()
         
-        # Helper to find min distance
+        # Helper to find min distance for visual logic
+        # If clear, we default to 2.0m just so the arrow is visible but not huge
         def get_min_dist(data_list):
             valid = [x for x in data_list if not math.isnan(x) and not math.isinf(x) and x > msg.range_min]
-            return min(valid) if valid else 2.0 # Default length if clear (2m)
+            return min(valid) if valid else 3.0 # Default length if clear (3m)
 
         marker_id = 0
         
@@ -87,7 +110,7 @@ class LidarSectorNode(Node):
             dist = get_min_dist(data)
             
             # Is it an obstacle or clear space?
-            is_obstacle = dist < 2.0 # Threshold for coloring
+            is_obstacle = dist < 3.0 # Threshold for coloring
             
             # Calculate endpoint for the line
             angle = self.sector_angles[name]
