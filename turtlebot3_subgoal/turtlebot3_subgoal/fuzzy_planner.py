@@ -4,6 +4,7 @@ from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float32MultiArray
 from geometry_msgs.msg import Twist
 from rclpy.qos import qos_profile_sensor_data, QoSProfile
+from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
 
 from tf2_ros import Buffer, TransformListener
 
@@ -24,30 +25,36 @@ dWE_val = {}
 
 
 def muNear(x):
-    if x <= 350:
+    min_dist = 400
+    max_dist = 600
+    if x <= min_dist:
         return 1.0
-    if 350 < x < 550:
-        return (550 - x) / 200
+    if min_dist < x < max_dist:
+        return (max_dist - x) / (max_dist - min_dist)
     return 0.0
 
 
 def muMedium(x):
-    if x <= 350 or x >= 750:
+    min_dist = 400
+    cen_dist = 600
+    max_dist = 800
+    if x <= min_dist or x >= max_dist:
         return 0.0
-    if 350 < x <= 550:
-        return (x - 350) / 200
-    if 550 < x < 750:
-        return (750 - x) / 200
+    if min_dist < x <= cen_dist:
+        return (x - min_dist) / (cen_dist - min_dist)
+    if cen_dist < x < max_dist:
+        return (max_dist - x) / (max_dist - cen_dist)
     return 0.0
 
 
 def muFar(x):
-    if x <= 550:
+    min_dist = 800
+    max_dist = 1000
+    if x <= min_dist:
         return 0.0
-    if 550 < x < 750:
-        return (x - 550) / 200
+    if min_dist < x < max_dist:
+        return (x - min_dist) / (max_dist - min_dist)
     return 1.0
-
 
 def get_fuzzy_inputs(distances):  # In meters
     global dNW_val, dNO_val, dNE_val, dES_val, dWE_val
@@ -241,9 +248,9 @@ def fuzzy_and_control(
         node.get_logger().info("Goal Seeking Mode")
 
     # Kinematic control
-    v_max = 0.26
-    w_max = 1.86
-    K_w, K_v = 1.0, 0.3, 0.0
+    v_max = 0.25
+    w_max = 1.80
+    K_w, K_v = 2.07/4, 1.49/4   
     dist_x, dist_y = xg - x, yg - y
     D = math.sqrt(dist_x**2 + dist_y**2)
     e_D = -D
@@ -291,17 +298,9 @@ class FuzzyPlanner(Node):
         self.position_g = None
         self.orientation_g = None
 
-        self.get_logger.info(
+        self.get_logger().info(
             "Initializing the Fuzzy Planner Node. Waiting for goal position..."
         )
-
-    def get_robot_pose(self):
-        # Get the latest available transform from /map to /base_link
-        t = self.tf_buffer.lookup_transform("map", "base_link", rclpy.time.Time())
-
-        # Extract Position
-        self.position_r = [t.transform.translation.x, t.transform.translation.y]
-        self.orientation_r = self.get_yaw_from_quaternion(t.transform.rotation)
 
     def goal_callback(self, msg: PoseStamped):
         # Rebecer goal final do RViZ
@@ -309,13 +308,32 @@ class FuzzyPlanner(Node):
         self.goal_pose = msg.pose
 
         self.position_g = [
-            self.goal_pose.pose.position.x,
-            self.goal_pose.pose.position.y,
+            self.goal_pose.position.x,
+            self.goal_pose.position.y,
         ]
         self.orientation_g = self.get_yaw_from_quaternion(self.goal_pose.orientation)
 
     def distance_callback(self, msg: Float32MultiArray):
-        distances = msg[:5]
+        self.get_logger().info("Received distances from lidar...")
+        
+        distances = list(msg.data)[:5]
+
+        # Get the latest available transform from /map to /base_link
+        try:
+            # Try to look up the transform
+            t = self.tf_buffer.lookup_transform("map", "base_link", rclpy.time.Time())
+        except (LookupException, ConnectivityException, ExtrapolationException) as e:
+            # If TF is not ready yet, simply return and wait for the next Lidar message
+            self.get_logger().info(f'Transform not ready yet: {e}')
+            return
+
+        self.get_logger().info("Received tf...")
+
+        # Extract Position
+        self.position_r = [t.transform.translation.x, t.transform.translation.y]
+        self.orientation_r = self.get_yaw_from_quaternion(t.transform.rotation)
+
+        self.get_logger().info(f" Robot {self.position_r} | {self.orientation_r}...")
 
         if not None in [
             self.position_r,
@@ -341,6 +359,8 @@ class FuzzyPlanner(Node):
             self.get_logger().info(
                 f"Linear Velocity: {v:.2f} | Angular Velocity: {w:.2f}"
             )
+
+        self.get_logger().info("Not enough info...")
 
     @staticmethod
     def get_yaw_from_quaternion(q):

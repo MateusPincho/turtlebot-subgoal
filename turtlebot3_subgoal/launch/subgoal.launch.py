@@ -25,19 +25,19 @@ def generate_launch_description():
         default_value="false"
     )
     
-    # Locate the standard TurtleBot3 Cartographer package
-    cartographer_pkg_dir = get_package_share_directory('turtlebot3_cartographer')
-    cartographer_launch_dir = os.path.join(cartographer_pkg_dir, 'launch')
+    # # Locate the standard TurtleBot3 Cartographer package
+    # cartographer_pkg_dir = get_package_share_directory('turtlebot3_cartographer')
+    # cartographer_launch_dir = os.path.join(cartographer_pkg_dir, 'launch')
 
-    # Include external launch
-    cartographer_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(cartographer_launch_dir, 'cartographer.launch.py')
-        ),
-        launch_arguments={
-            'use_sim_time': use_sim_time,
-        }.items()
-    )
+    # # Include external launch
+    # cartographer_cmd = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         os.path.join(cartographer_launch_dir, 'cartographer.launch.py')
+    #     ),
+    #     launch_arguments={
+    #         'use_sim_time': use_sim_time,
+    #     }.items()
+    # )
 
     lidar_distance_node = Node(
         package='turtlebot3_subgoal',          
@@ -53,17 +53,9 @@ def generate_launch_description():
         output='screen'
     )
 
-    go_to_goal_node = Node(
-        package='turtlebot3_subgoal',   
-        executable='go_to_goal',
-        name='go_to_goal',
-        output='screen'
-    )
 
     return LaunchDescription([
         use_sim_time_arg,
-        cartographer_cmd,
         lidar_distance_node,
         fuzzy_planner_node,
-        go_to_goal_node
     ])
