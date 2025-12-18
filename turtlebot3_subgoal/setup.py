@@ -1,4 +1,5 @@
 from setuptools import find_packages, setup
+from glob import glob
 import os
 
 package_name = 'turtlebot3_subgoal'
@@ -27,6 +28,8 @@ setup(
     entry_points={
         'console_scripts': [
             'lidar_distance = turtlebot3_subgoal.lidar_distance:main',
+            'fuzzy_planner = turtlebot3_subgoal.fuzzy_planner:main',
+            'aicardi_controller = turtlebot3_subgoal.aicardi_controller:main'
         ],
     },
 )
