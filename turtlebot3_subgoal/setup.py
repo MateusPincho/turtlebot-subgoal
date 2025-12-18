@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'create_lidar_and_fuzzy'
+package_name = 'turtlebot3_subgoal'
 
 setup(
     name=package_name,
@@ -24,7 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'lidar_distance = create_lidar_and_fuzzy.lidar_distance:main',
+            'lidar_distance = turtlebot3_subgoal.lidar_distance:main',
         ],
     },
 )
