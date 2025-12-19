@@ -3,12 +3,13 @@ from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float32MultiArray
 from geometry_msgs.msg import Twist
-from rclpy.qos import qos_profile_sensor_data, QoSProfile
 from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
+from visualization_msgs.msg import Marker
 
 from tf2_ros import Buffer, TransformListener
 
 import math
+import numpy as np
 
 # Global variables for fuzzy logic
 dist_fuzzy = {"N": 0, "M": 0, "F": 0}
@@ -212,8 +213,7 @@ def deffuzification():
         alpha_sub_goal_tracking,
     ]
 
-
-def fuzzy_and_control(
+def fuzzy_and_lyapunov(
     node, robot_position, robot_orientation, goal_position, goal_orientation, distances
 ):
     x, y = robot_position
@@ -228,13 +228,14 @@ def fuzzy_and_control(
 
     xg, yg = xg_perm, yg_perm
 
+    mode = "Not Defined"
     # State Logic (Obstacle Avoidance / Tracking / Goal Seeking)
     if dNW_val["F"] < 1 or dNO_val["F"] < 1 or dNE_val["F"] < 1:
         if Dfix >= 0.3:
             e, alpha_fuzzy_val = change[0], change[1]
             xg = x + e * math.cos(alpha_fuzzy_val + theta)
             yg = y + e * math.sin(alpha_fuzzy_val + theta)
-            node.get_logger().info("Obstacle Avoidance Mode")
+            mode = "Obstacle Avoidance"
 
     elif (dES_val["N"] > 0 or dWE_val["N"] > 0) and (
         math.pi / 4 <= abs(phi_perm) - abs(theta) <= 3 * math.pi / 4
@@ -243,32 +244,65 @@ def fuzzy_and_control(
             e, alpha_fuzzy_val = change[2], change[3]
             xg = x + e * math.cos(alpha_fuzzy_val + theta)
             yg = y + e * math.sin(alpha_fuzzy_val + theta)
-            node.get_logger().info("Tracking Mode")
+            mode = "Tracking"
     else:
-        node.get_logger().info("Goal Seeking Mode")
+        mode = "Goal Seeking"
+
+    node.get_logger().info(f"{mode} Mode")
+    marker = node.create_marker(xg, yg, mode)
+    node.marker_pub.publish(marker)
 
     # Kinematic control
-    v_max = 0.25
-    w_max = 1.80
-    K_w, K_v = 2.07/4, 1.49/4   
     dist_x, dist_y = xg - x, yg - y
     D = math.sqrt(dist_x**2 + dist_y**2)
-    e_D = -D
-
     phi = math.atan2(dist_y, dist_x)
     alpha = theta - phi
-    alpha = math.atan2(math.sin(alpha), math.cos(alpha))
+    alpha = math.atan2(math.sin(alpha), math.cos(alpha)) 
 
     node.get_logger().info(f"Error distance: {D:.2f} | Orientation Error: {alpha:.2f}")
 
     if Dfix < 0.1:
         return 0.0, 0.0
+    
+    v_max = 0.25
+    w_max = 1.80
+    K_w, K_v = 2.07/4, 1.49/4 
 
-    v = -K_v * e_D * math.cos(alpha)
-    v = min(v, v_max)
+    v = K_v * D * math.cos(alpha)
+    v = np.clip(v, -v_max, v_max)
 
     w = -K_w * alpha - (v / D) * math.sin(alpha)
-    w = min(w, w_max)
+    w = np.clip(w, -w_max, w_max)
+
+    return v, w
+
+def lyapunov_control(
+    node, robot_position, robot_orientation, goal_position
+):
+    x, y = robot_position
+    xg, yg = goal_position
+    theta = robot_orientation
+
+    dist_x, dist_y = xg - x, yg - y
+    D = math.sqrt(dist_x**2 + dist_y**2)
+    phi = math.atan2(dist_y, dist_x)
+    alpha = theta - phi
+    alpha = math.atan2(math.sin(alpha), math.cos(alpha))  
+
+    node.get_logger().info(f"Error distance: {D:.2f} | Orientation Error: {alpha:.2f}")
+
+    if D < 0.1:
+        return 0.0, 0.0
+    
+    v_max = 0.25
+    w_max = 1.80
+    K_w, K_v = 2.07/4, 1.49/4 
+
+    v = K_v * D * math.cos(alpha)
+    v = np.clip(v, -v_max, v_max)
+
+    w = -K_w * alpha - (v / D) * math.sin(alpha)
+    w = np.clip(w, -w_max, w_max)
 
     return v, w
 
@@ -287,6 +321,7 @@ class FuzzyPlanner(Node):
 
         # Publishers
         self.twist_pub = self.create_publisher(Twist, "/cmd_vel", 10)
+        self.marker_pub = self.create_publisher(Marker, "/fuzzy_subgoal", 10)
 
         # The buffer stores transform data for up to 10 seconds by default
         self.tf_buffer = Buffer()
@@ -341,7 +376,7 @@ class FuzzyPlanner(Node):
             self.position_g,
             self.orientation_g,
         ]:
-            v, w = fuzzy_and_control(
+            v, w = fuzzy_and_lyapunov(
                 self,
                 self.position_r,
                 self.orientation_r,
@@ -349,6 +384,13 @@ class FuzzyPlanner(Node):
                 self.orientation_g,
                 distances,
             )
+
+            #v, w = lyapunov_control(
+            #    self,
+            #    self.position_r,
+            #    self.orientation_r,
+            #    self.position_g,
+            #)
 
             msg = Twist()
             msg.linear.x = v
@@ -360,7 +402,48 @@ class FuzzyPlanner(Node):
                 f"Linear Velocity: {v:.2f} | Angular Velocity: {w:.2f}"
             )
 
+            return 
+
         self.get_logger().info("Not enough info...")
+
+    def create_marker(self, xg, yg, mode):
+        marker = Marker()
+        marker.header.frame_id = "map"
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+
+        # Set the scale (size in meters)
+        marker.scale.x = 0.1
+        marker.scale.y = 0.1
+        marker.scale.z = 0.1
+
+        # Set the color (RGBA)
+        marker.color.a = 1.0 # Opaque
+        if mode == "Obstacle Avoidance":
+            marker.color.r = 1.0
+            marker.color.g = 0.0
+            marker.color.b = 0.0
+
+        elif mode == "Tracking":
+            marker.color.r = 0.0
+            marker.color.g = 0.0
+            marker.color.b = 1.0
+
+        elif mode == "Goal Seeking":
+            marker.color.r = 0.0
+            marker.color.g = 1.0
+            marker.color.b = 0.0
+
+        else:
+            marker.color.r = 0.0
+            marker.color.g = 0.0
+            marker.color.b = 0.0
+
+        marker.pose.position.x = xg
+        marker.pose.position.y = yg
+        marker.pose.position.z = 0.0
+
+        return marker
 
     @staticmethod
     def get_yaw_from_quaternion(q):
