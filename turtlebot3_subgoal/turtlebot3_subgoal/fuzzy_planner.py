@@ -24,44 +24,33 @@ dNE_val = {}
 dES_val = {}
 dWE_val = {}
 
+def gaussian(x, c, sigma):
+    return np.exp(-((x - c) ** 2) / (2 * sigma ** 2))
 
 def muNear(x):
-    min_dist = 400
-    max_dist = 600
-    if x <= min_dist:
+    center = 400
+    sigma = 100
+    if x <= center:
         return 1.0
-    if min_dist < x < max_dist:
-        return (max_dist - x) / (max_dist - min_dist)
-    return 0.0
-
+    return float(gaussian(x, center, sigma))
 
 def muMedium(x):
-    min_dist = 400
-    cen_dist = 600
-    max_dist = 800
-    if x <= min_dist or x >= max_dist:
-        return 0.0
-    if min_dist < x <= cen_dist:
-        return (x - min_dist) / (cen_dist - min_dist)
-    if cen_dist < x < max_dist:
-        return (max_dist - x) / (max_dist - cen_dist)
-    return 0.0
-
+    center = 800
+    sigma = 100
+    return float(gaussian(x, center, sigma))
 
 def muFar(x):
-    min_dist = 800
-    max_dist = 1000
-    if x <= min_dist:
-        return 0.0
-    if min_dist < x < max_dist:
-        return (x - min_dist) / (max_dist - min_dist)
-    return 1.0
+    center = 1200
+    sigma = 100
+    if x >= center:
+        return 1.0
+    return float(gaussian(x, center, sigma))
 
 def get_fuzzy_inputs(distances):  # In meters
     global dNW_val, dNO_val, dNE_val, dES_val, dWE_val
 
     # Convert to meters and limit result to 1 meter
-    dNW, dNO, dNE, dES, dWE = [d * 1000 if d * 1000 < 1000 else 1000 for d in distances]
+    dNW, dNO, dNE, dES, dWE = [d * 1000 for d in distances]
 
     dNW_val = {"N": muNear(dNW), "M": muMedium(dNW), "F": muFar(dNW)}
     dNO_val = {"N": muNear(dNO), "M": muMedium(dNO), "F": muFar(dNO)}
@@ -228,7 +217,7 @@ def fuzzy_and_lyapunov(
 
     xg, yg = xg_perm, yg_perm
 
-    mode = "Not Defined"
+    mode = "Goal Seeking"
     # State Logic (Obstacle Avoidance / Tracking / Goal Seeking)
     if dNW_val["F"] < 1 or dNO_val["F"] < 1 or dNE_val["F"] < 1:
         if Dfix >= 0.3:
@@ -245,8 +234,9 @@ def fuzzy_and_lyapunov(
             xg = x + e * math.cos(alpha_fuzzy_val + theta)
             yg = y + e * math.sin(alpha_fuzzy_val + theta)
             mode = "Tracking"
+
     else:
-        mode = "Goal Seeking"
+        mode = "Undefined Behaviour"
 
     node.get_logger().info(f"{mode} Mode")
     marker = node.create_marker(xg, yg, mode)
@@ -261,12 +251,12 @@ def fuzzy_and_lyapunov(
 
     node.get_logger().info(f"Error distance: {D:.2f} | Orientation Error: {alpha:.2f}")
 
-    if Dfix < 0.1:
+    if Dfix < 0.05:
         return 0.0, 0.0
     
-    v_max = 0.25
-    w_max = 1.80
-    K_w, K_v = 2.07/4, 1.49/4 
+    v_max = 0.26
+    w_max = 1.82
+    K_w, K_v = 0.3163, 1.6434
 
     v = K_v * D * math.cos(alpha)
     v = np.clip(v, -v_max, v_max)
@@ -291,7 +281,7 @@ def lyapunov_control(
 
     node.get_logger().info(f"Error distance: {D:.2f} | Orientation Error: {alpha:.2f}")
 
-    if D < 0.1:
+    if D < 0.05:
         return 0.0, 0.0
     
     v_max = 0.25
@@ -376,6 +366,7 @@ class FuzzyPlanner(Node):
             self.position_g,
             self.orientation_g,
         ]:
+            # Uncomment for fuzzy + lyapunov
             v, w = fuzzy_and_lyapunov(
                 self,
                 self.position_r,
@@ -385,6 +376,7 @@ class FuzzyPlanner(Node):
                 distances,
             )
 
+            # Uncomment for pure Lypunov
             #v, w = lyapunov_control(
             #    self,
             #    self.position_r,
