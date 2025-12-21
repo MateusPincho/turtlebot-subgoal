@@ -28,6 +28,7 @@ setup(
     entry_points={
         'console_scripts': [
             'lidar_distance = turtlebot3_subgoal.lidar_distance:main',
+            'lidar_distance_isaac = turtlebot3_subgoal.lidar_distance_isaac:main',
             'fuzzy_planner = turtlebot3_subgoal.fuzzy_planner:main',
             'aicardi_controller = turtlebot3_subgoal.aicardi_controller:main'
         ],
