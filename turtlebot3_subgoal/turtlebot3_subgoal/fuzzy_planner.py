@@ -489,7 +489,7 @@ class FuzzyPlanner(Node):
 
         self.get_logger().info("Not enough info...")
 
-    def create_marker(self, xg, yg):
+    def create_marker(self, xg, yg, mode):
         marker = Marker()
         marker.header.frame_id = "map"
         marker.type = Marker.SPHERE
