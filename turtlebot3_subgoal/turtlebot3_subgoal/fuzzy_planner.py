@@ -11,6 +11,7 @@ from tf2_ros import Buffer, TransformListener
 import math
 import numpy as np
 
+
 class FuzzySystem:
     def __init__(self):
         self.variables = {}
@@ -19,15 +20,20 @@ class FuzzySystem:
     def add_variable(self, name, range_min, range_max, resolution=1000):
         self.variables[name] = {
             "range": np.linspace(range_min, range_max, resolution),
-            "terms": {}
+            "terms": {},
         }
 
     def add_term(self, var_name, term_name, mf_type, params, saturate=None):
         universe = self.variables[var_name]["range"]
-        
+
         if mf_type == "Triangular":
             a, b, c = params
-            mf = np.maximum(0, np.minimum((universe - a) / (b - a + 1e-9), (c - universe) / (c - b + 1e-9)))
+            mf = np.maximum(
+                0,
+                np.minimum(
+                    (universe - a) / (b - a + 1e-9), (c - universe) / (c - b + 1e-9)
+                ),
+            )
             peak_start, peak_end = b, b
 
         elif mf_type == "Trapezoidal":
@@ -36,17 +42,19 @@ class FuzzySystem:
             term2 = (d - universe) / (d - c + 1e-9)
             mf = np.maximum(0, np.minimum(np.minimum(term1, 1), term2))
             peak_start, peak_end = b, c
-            
+
         elif mf_type == "Gaussian":
             # params = [mean, sigma]
             mean, sigma = params
             # Standard Gaussian formula
-            mf = np.exp(-0.5 * ((universe - mean) / (sigma + 1e-9))**2)
+            mf = np.exp(-0.5 * ((universe - mean) / (sigma + 1e-9)) ** 2)
             peak_start, peak_end = mean, mean
-            
+
         else:
-            raise ValueError("Unsupported MF type. Use 'Triangular', 'Trapezoidal', or 'Gaussian'.")
-        
+            raise ValueError(
+                "Unsupported MF type. Use 'Triangular', 'Trapezoidal', or 'Gaussian'."
+            )
+
         if saturate == "Left":
             # Force everything to the left of the peak start to 1.0
             mf = np.where(universe <= peak_start, np.maximum(mf, 1.0), mf)
@@ -55,48 +63,51 @@ class FuzzySystem:
             mf = np.where(universe >= peak_end, np.maximum(mf, 1.0), mf)
         else:
             pass
-            
+
         self.variables[var_name]["terms"][term_name] = mf
 
     def _get_membership_value(self, var_name, term_name, value):
         universe = self.variables[var_name]["range"]
         mf = self.variables[var_name]["terms"][term_name]
         return np.interp(value, universe, mf)
-    
-    def add_rule(self, antecedents, consequents, operator='and'):
+
+    def add_rule(self, antecedents, consequents, operator="and"):
         """
         consequents: List of (var_name, term_name) OR a single (var_name, term_name)
         """
         # Ensure consequents is always a list for consistent processing
         if isinstance(consequents, tuple):
             consequents = [consequents]
-            
-        self.rules.append({
-            'if': antecedents, 
-            'then': consequents, 
-            'op': operator.lower()
-        })
+
+        self.rules.append(
+            {"if": antecedents, "then": consequents, "op": operator.lower()}
+        )
 
     def _internal_inference(self, inputs):
         """Helper to perform the fuzzy logic and return aggregated MFs."""
         aggregated_outputs = {}
-        
+
         for rule in self.rules:
             # 1. Calculate activation level
-            degrees = [self._get_membership_value(var, term, inputs.get(var, 0)) for var, term in rule['if']]
-            activation = min(degrees) if rule['op'] == 'and' else max(degrees)
-            
+            degrees = [
+                self._get_membership_value(var, term, inputs.get(var, 0))
+                for var, term in rule["if"]
+            ]
+            activation = min(degrees) if rule["op"] == "and" else max(degrees)
+
             # 2. Apply activation to ALL consequents in this rule
-            for out_var, out_term in rule['then']:
-                out_mf = self.variables[out_var]['terms'][out_term]
+            for out_var, out_term in rule["then"]:
+                out_mf = self.variables[out_var]["terms"][out_term]
                 clipped_mf = np.minimum(activation, out_mf)
-                
+
                 if out_var not in aggregated_outputs:
                     aggregated_outputs[out_var] = np.zeros_like(out_mf)
-                
+
                 # Aggregate using MAX (S-norm)
-                aggregated_outputs[out_var] = np.maximum(aggregated_outputs[out_var], clipped_mf)
-                
+                aggregated_outputs[out_var] = np.maximum(
+                    aggregated_outputs[out_var], clipped_mf
+                )
+
         return aggregated_outputs
 
     def compute(self, inputs):
@@ -104,10 +115,15 @@ class FuzzySystem:
         aggregated = self._internal_inference(inputs)
         results = {}
         for var_name, final_mf in aggregated.items():
-            universe = self.variables[var_name]['range']
+            universe = self.variables[var_name]["range"]
             sum_mu = np.sum(final_mf)
-            results[var_name] = np.sum(final_mf * universe) / sum_mu if sum_mu > 0 else np.mean(universe)
+            results[var_name] = (
+                np.sum(final_mf * universe) / sum_mu
+                if sum_mu > 0
+                else np.mean(universe)
+            )
         return results
+
 
 fuzzy_nav = FuzzySystem()
 
@@ -171,48 +187,53 @@ fuzzy_nav.add_term("Confidence", "High", "Gaussian", [1.0, 0.1])
 # If there isn't anything close to a direction ahead, steer to goal direction
 for orientation in ["NW", "NO", "NE", "ES", "WE"]:
     fuzzy_nav.add_rule(
-        [("NO Distance", "Far"), ("NW Distance", "Far"), ("NE Distance", "Far"), ("Goal Orientation", orientation)],
+        [
+            ("NO Distance", "Far"),
+            ("NW Distance", "Far"),
+            ("NE Distance", "Far"),
+            ("Goal Orientation", orientation),
+        ],
         [("D*", "Far"), ("Alpha*", orientation)],
-        operator="and"
+        operator="and",
     )
 
 # Go through bifurcations
 fuzzy_nav.add_rule(
-    [("NO Distance", "Near"), ("NW Distance", "Far")], 
-    [("D*", "Far"), ("Alpha*", "NW")], 
-    operator="and"
+    [("NO Distance", "Near"), ("NW Distance", "Far")],
+    [("D*", "Far"), ("Alpha*", "NW")],
+    operator="and",
 )
 
 fuzzy_nav.add_rule(
-    [("NO Distance", "Near"), ("NE Distance", "Far")], 
-    [("D*", "Near"), ("Alpha*", "NE")], 
-    operator="and"
+    [("NO Distance", "Near"), ("NE Distance", "Far")],
+    [("D*", "Near"), ("Alpha*", "NE")],
+    operator="and",
 )
 
 # Avoid colliding with walls when not in a deadlock
 fuzzy_nav.add_rule(
-    [("NW Distance", "Very Near"), ("NO Distance", "Far")], 
-    [("D*", "Near"), ("Alpha*", "ES")], 
-    operator="and"
+    [("NW Distance", "Very Near"), ("NO Distance", "Far")],
+    [("D*", "Near"), ("Alpha*", "ES")],
+    operator="and",
 )
 
 fuzzy_nav.add_rule(
-    [("NE Distance", "Very Near"), ("NO Distance", "Far")], 
-    [("D*", "Near"), ("Alpha*", "WE")], 
-    operator="and"
+    [("NE Distance", "Very Near"), ("NO Distance", "Far")],
+    [("D*", "Near"), ("Alpha*", "WE")],
+    operator="and",
 )
 
 # Stay centered on corridors
 fuzzy_nav.add_rule(
-    [("NW Distance", "Near"), ("NE Distance", "Very Near")], 
-    [("D*", "Near"), ("Alpha*", "NW")], 
-    operator="and"
+    [("NW Distance", "Near"), ("NE Distance", "Very Near")],
+    [("D*", "Near"), ("Alpha*", "NW")],
+    operator="and",
 )
 
 fuzzy_nav.add_rule(
-    [("NE Distance", "Near"), ("NW Distance", "Very Near")], 
-    [("D*", "Near"), ("Alpha*", "NE")], 
-    operator="and"
+    [("NE Distance", "Near"), ("NW Distance", "Very Near")],
+    [("D*", "Near"), ("Alpha*", "NE")],
+    operator="and",
 )
 
 # Follow a narrow corridor carefuly
@@ -271,39 +292,43 @@ fuzzy_nav.add_rule(
     operator="and",
 )
 
+
 def get_robot_goal_states(robot_position, robot_orientation, target_position):
     x, y = robot_position
     x_t, y_t = target_position
-    D = ((x_t - x)**2 + (y_t - y)**2)**0.5
+    D = ((x_t - x) ** 2 + (y_t - y) ** 2) ** 0.5
     phi = np.arctan2((y_t - y), (x_t - x))
     theta = robot_orientation
     alpha = theta - phi
 
     return D, alpha
 
+
 def control_laws(D, Dd, alpha, Kv, Kw):
     ed = D - Dd
     v = Kv * ed * np.cos(alpha)
-    omega = -Kw * alpha -v * np.sin(alpha) / D
+    omega = -Kw * alpha - v * np.sin(alpha) / D
 
     return v, omega
 
+
 def wrap_to_pi(angle):
     return (angle + np.pi) % (2.0 * np.pi) - np.pi
+
 
 def alpha_to_wind_rose(alpha):
     alpha = wrap_to_pi(alpha)
 
     # Sector boundaries of 45°
     sector_edges = [
-        (-np.pi/8,  np.pi/8,   "NO"),
-        ( np.pi/8,  3*np.pi/8, "NE"),
-        (3*np.pi/8, 5*np.pi/8, "ES"),
-        (5*np.pi/8, 7*np.pi/8, "SE"),
-        (7*np.pi/8, -7*np.pi/8,"SO"),  
-        (-7*np.pi/8,-5*np.pi/8,"SW"),
-        (-5*np.pi/8,-3*np.pi/8,"WE"),
-        (-3*np.pi/8,-np.pi/8,  "NW")
+        (-np.pi / 8, np.pi / 8, "NO"),
+        (np.pi / 8, 3 * np.pi / 8, "NE"),
+        (3 * np.pi / 8, 5 * np.pi / 8, "ES"),
+        (5 * np.pi / 8, 7 * np.pi / 8, "SE"),
+        (7 * np.pi / 8, -7 * np.pi / 8, "SO"),
+        (-7 * np.pi / 8, -5 * np.pi / 8, "SW"),
+        (-5 * np.pi / 8, -3 * np.pi / 8, "WE"),
+        (-3 * np.pi / 8, -np.pi / 8, "NW"),
     ]
 
     for low, high, label in sector_edges:
@@ -316,6 +341,7 @@ def alpha_to_wind_rose(alpha):
 
     # Fallback (should never happen)
     return "NO"
+
 
 class FuzzyPlanner(Node):
     def __init__(self):
@@ -360,7 +386,7 @@ class FuzzyPlanner(Node):
 
     def distance_callback(self, msg: Float32MultiArray):
         self.get_logger().info("Received distances from lidar...")
-        
+
         distances = list(msg.data)[:5]
         wind_rose = {k: d for d, k in zip(distances, ["NW", "NO", "NE", "ES", "WE"])}
 
@@ -370,7 +396,7 @@ class FuzzyPlanner(Node):
             t = self.tf_buffer.lookup_transform("map", "base_link", rclpy.time.Time())
         except (LookupException, ConnectivityException, ExtrapolationException) as e:
             # If TF is not ready yet, simply return and wait for the next Lidar message
-            self.get_logger().info(f'Transform not ready yet: {e}')
+            self.get_logger().info(f"Transform not ready yet: {e}")
             return
 
         self.get_logger().info("Received tf...")
@@ -379,7 +405,9 @@ class FuzzyPlanner(Node):
         self.robot_position = [t.transform.translation.x, t.transform.translation.y]
         self.robot_orientation = self.get_yaw_from_quaternion(t.transform.rotation)
 
-        self.get_logger().info(f" Robot {self.robot_position} | {self.robot_orientation}...")
+        self.get_logger().info(
+            f" Robot {self.robot_position} | {self.robot_orientation}..."
+        )
 
         if not None in [
             self.robot_position,
@@ -393,7 +421,9 @@ class FuzzyPlanner(Node):
             Kv, Kw = 0.3163, 1.6434
 
             # Get robot states in Benbouabdallah reference
-            D, alpha = get_robot_goal_states(self.robot_position, self.robot_orientation, self.goal_position)
+            D, alpha = get_robot_goal_states(
+                self.robot_position, self.robot_orientation, self.goal_position
+            )
             inputs = {
                 "Goal Orientation": alpha,
                 "NW Distance": wind_rose["NW"],
@@ -405,24 +435,39 @@ class FuzzyPlanner(Node):
             results = fuzzy_nav.compute(inputs)
             D_star = results["D*"]
             alpha_star = results["Alpha*"]
-            W = results["Confidence"]
 
             # Control laws
-            if D < wind_rose[alpha_to_wind_rose(alpha)] and D_star / D > 0.75:
+            try:
+                shortest_distance_to_goal = wind_rose[alpha_to_wind_rose(alpha)]
+
+            except:
+                shortest_distance_to_goal = 0.0
+
+            if D < shortest_distance_to_goal and D_star / D > 0.75:
                 v, omega = control_laws(D, Dd, alpha, Kv, Kw)
 
-                self.create_marker(
-                    xg = self.robot_position[0] + D * np.cos(self.robot_orientation - alpha),
-                    yg = self.robot_position[1] + D * np.cos(self.robot_orientation - alpha),
+                marker = self.create_marker(
+                    xg=self.robot_position[0]
+                    + D * np.cos(self.robot_orientation - alpha),
+                    yg=self.robot_position[1]
+                    + D * np.sin(self.robot_orientation - alpha),
+                    mode="Goal Seeking",
                 )
+
+                self.marker_pub.publish(marker)
 
             else:
                 v, omega = control_laws(D_star, Dd, alpha_star, Kv, Kw)
 
-                self.create_marker(
-                    xg = self.robot_position[0] + D * np.cos(self.robot_orientation - alpha_star),
-                    yg = self.robot_position[1] + D * np.cos(self.robot_orientation - alpha_star),
+                marker = self.create_marker(
+                    xg=self.robot_position[0]
+                    + D * np.cos(self.robot_orientation - alpha_star),
+                    yg=self.robot_position[1]
+                    + D * np.sin(self.robot_orientation - alpha_star),
+                    mode="Navigating",
                 )
+
+                self.marker_pub.publish(marker)
 
             v = np.clip(v, -v_max, v_max)
             omega = np.clip(omega, -omega_max, omega_max)
@@ -437,7 +482,7 @@ class FuzzyPlanner(Node):
                 f"Linear Velocity: {v:.2f} | Angular Velocity: {omega:.2f}"
             )
 
-            return 
+            return
 
         self.get_logger().info("Not enough info...")
 
@@ -453,7 +498,7 @@ class FuzzyPlanner(Node):
         marker.scale.z = 0.1
 
         # Set the color (RGBA)
-        marker.color.a = 1.0 # Opaque
+        marker.color.a = 1.0  # Opaque
         if mode == "Navigating":
             marker.color.r = 1.0
             marker.color.g = 1.0
