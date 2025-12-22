@@ -391,6 +391,7 @@ class FuzzyPlanner(Node):
             v_max = 0.26
             omega_max = 1.82
             Kv, Kw = 0.3163, 1.6434
+            
 
             # Get robot states in Benbouabdallah reference
             D, alpha = get_robot_goal_states(self.robot_position, self.robot_orientation, self.goal_position)
