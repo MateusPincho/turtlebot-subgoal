@@ -1,10 +1,12 @@
-import argparse
 import os
-import numpy as np
-import matplotlib.pyplot as plt
-from PIL import Image
 import yaml
 import math
+import argparse
+import numpy as np
+from PIL import Image
+from pathlib import Path
+import matplotlib.pyplot as plt
+
 
 from rosbag2_py import SequentialReader, StorageOptions, ConverterOptions, StorageFilter
 from rclpy.serialization import deserialize_message
@@ -264,8 +266,8 @@ def plot_pose_trajectory(
 
     # Styling
     ax.set_title(f"Robot Path", fontsize=16, fontweight="bold")
-    ax.set_xlabel("X Position [m]", fontsize=12)
-    ax.set_ylabel("Y Position [m]", fontsize=12)
+    ax.set_xlabel("X [m]", fontsize=12)
+    ax.set_ylabel("Y [m]", fontsize=12)
 
     # Tight fitting: Use the map extent if available, otherwise default to data bounds
     if map_extent:
@@ -285,7 +287,7 @@ def plot_pose_trajectory(
 
     plt.tight_layout()
 
-    output_filename = "robot_path.png"
+    output_filename = f"{Path(bag_path).stem}.png"
     plt.savefig(output_filename)
     print(f"\nPlot saved successfully to {output_filename}")
 
