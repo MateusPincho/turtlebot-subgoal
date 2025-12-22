@@ -461,9 +461,9 @@ class FuzzyPlanner(Node):
 
                 marker = self.create_marker(
                     xg=self.robot_position[0]
-                    + D * np.cos(self.robot_orientation - alpha_star),
+                    + D_star * np.cos(self.robot_orientation - alpha_star),
                     yg=self.robot_position[1]
-                    + D * np.sin(self.robot_orientation - alpha_star),
+                    + D_star * np.sin(self.robot_orientation - alpha_star),
                     mode="Navigating",
                 )
 
