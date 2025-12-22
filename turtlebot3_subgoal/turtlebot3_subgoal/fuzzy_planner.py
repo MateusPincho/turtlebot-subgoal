@@ -11,148 +11,6 @@ from tf2_ros import Buffer, TransformListener
 import math
 import numpy as np
 
-fuzzy_nav = FuzzySystem()
-
-# Inputs
-fuzzy_nav.add_variable("Goal Distance", 0.0, 5.0)
-fuzzy_nav.add_term("Goal Distance", "Very Near", "Gaussian", [1.0, 0.5], saturate="Left")
-fuzzy_nav.add_term("Goal Distance", "Near", "Gaussian", [2.0, 0.5])
-fuzzy_nav.add_term("Goal Distance", "Far", "Gaussian", [3.0, 0.5], saturate="Right")
-
-fuzzy_nav.add_variable("Goal Orientation", -np.pi, np.pi)
-fuzzy_nav.add_term("Goal Orientation", "Right", "Gaussian", [-np.pi / 2, 0.5], saturate="Left")
-fuzzy_nav.add_term("Goal Orientation", "Center", "Gaussian", [0.0, 0.5])
-fuzzy_nav.add_term("Goal Orientation", "Left", "Gaussian", [np.pi / 2, 0.5], saturate="Right")
-
-wind_rose_keys = [
-    "SW Distance",
-    "WE Distance",
-    "NW Distance",
-    "NO Distance",
-    "NE Distance",
-    "ES Distance",
-    "SE Distance",
-    "SO Distance",
-]
-for k in wind_rose_keys:
-    fuzzy_nav.add_variable(k, 0.0, 5.0)
-    fuzzy_nav.add_term(k, "Very Near", "Gaussian", [0.4, 0.15], saturate="Left")
-    fuzzy_nav.add_term(k, "Near", "Gaussian", [0.8, 0.15])
-    fuzzy_nav.add_term(k, "Far", "Gaussian", [1.2, 0.15], saturate="Right")
-
-# Outputs
-fuzzy_nav.add_variable("D*", 0.0, 1.0)
-fuzzy_nav.add_term("D*", "Very Near", "Gaussian", [0.0, 0.15])
-fuzzy_nav.add_term("D*", "Near", "Gaussian", [0.4, 0.15])
-fuzzy_nav.add_term("D*", "Far", "Gaussian", [0.8, 0.15], saturate="Right")
-
-fuzzy_nav.add_variable("Alpha*", -np.pi, np.pi)
-fuzzy_nav.add_term("Alpha*", "SOe", "Gaussian", [-np.pi, 0.5])
-fuzzy_nav.add_term("Alpha*", "SE", "Gaussian", [-3.0 * np.pi / 4.0, 0.5])
-fuzzy_nav.add_term("Alpha*", "ES", "Gaussian", [-np.pi / 2.0, 0.5])
-fuzzy_nav.add_term("Alpha*", "NE", "Gaussian", [-np.pi / 4.0, 0.5])
-fuzzy_nav.add_term("Alpha*", "NO", "Gaussian", [0.0, 0.5])
-fuzzy_nav.add_term("Alpha*", "NW", "Gaussian", [np.pi / 4.0, 0.5])
-fuzzy_nav.add_term("Alpha*", "WE", "Gaussian", [np.pi / 2.0, 0.5])
-fuzzy_nav.add_term("Alpha*", "SW", "Gaussian", [3.0 * np.pi / 4.0, 0.5])
-fuzzy_nav.add_term("Alpha*", "SOw", "Gaussian", [np.pi, 0.5])
-
-fuzzy_nav.add_variable("Subgoal Confidence", 0.0, 1.0)
-fuzzy_nav.add_term("Subgoal Confidence", "Low", "Gaussian", [0.0, 0.2])
-fuzzy_nav.add_term("Subgoal Confidence", "Medium", "Gaussian", [0.5, 0.2])
-fuzzy_nav.add_term("Subgoal Confidence", "High", "Gaussian", [1.0, 0.2])
-
-# If everything is far away, explore terrain
-fuzzy_nav.add_rule(
-    [("NO Distance", "Far"), ("WE Distance", "Far"), ("ES Distance", "Far")], 
-    [("D*", "Far"), ("Alpha*", "NO")], 
-    operator="and"
-)
-
-# If there isn't anything close to a direction, go full speed at it
-fuzzy_nav.add_rule(
-    [("NO Distance", "Far")], 
-    [("D*", "Far"), ("Alpha*", "NO")], 
-    operator="or"
-)
-
-fuzzy_nav.add_rule(
-    [("NW Distance", "Near")], 
-    [("D*", "Near"), ("Alpha*", "NW")], 
-    operator="or"
-)
-
-fuzzy_nav.add_rule(
-    [("NE Distance", "Near")], 
-    [("D*", "Near"), ("Alpha*", "NE")], 
-    operator="or"
-)
-
-# Follow a narrow corridor carefuly
-fuzzy_nav.add_rule(
-    [("NO Distance", "Far"), ("WE Distance", "Very Near"), ("ES Distance", "Very Near")], 
-    [("D*", "Near"), ("Alpha*", "NO")], 
-    operator="and"
-)
-
-# Sprint through a wide corridor 
-fuzzy_nav.add_rule(
-    [("NO Distance", "Far"), ("WE Distance", "Near"), ("ES Distance", "Near")], 
-    [("D*", "Near"), ("Alpha*", "NO")], 
-    operator="and"
-)
-
-# Stay centered on corridor
-fuzzy_nav.add_rule(
-    [("ES Distance", "Very Near"), ("WE Distance", "Near"), ("NO Distance", "Far")], 
-    [("D*", "Near"), ("Alpha*", "NW")], 
-    operator="and"
-)
-
-fuzzy_nav.add_rule(
-    [("ES Distance", "Near"), ("WE Distance", "Very Near"), ("NO Distance", "Far")], 
-    [("D*", "Near"), ("Alpha*", "NE")], 
-    operator="and"
-)
-
-# Turn on L-shape corridor
-fuzzy_nav.add_rule(
-    [("NO Distance", "Near"), ("WE Distance", "Very Near"), ("ES Distance", "Near")], 
-    [("D*", "Very Near"), ("Alpha*", "NE")], 
-    operator="and"
-)
-
-fuzzy_nav.add_rule(
-    [("NO Distance", "Near"), ("WE Distance", "Near"), ("ES Distance", "Very Near")], 
-    [("D*", "Very Near"), ("Alpha*", "NW")], 
-    operator="and"
-)
-
-# Deadlock detected, turn around
-fuzzy_nav.add_rule(
-    [
-        ("NO Distance", "Very Near"), 
-        ("NE Distance", "Near"), 
-        ("NW Distance", "Very Near"), 
-        ("ES Distance", "Near"), 
-        ("WE Distance", "Very Near")
-    ], 
-    [("D*", "Very Near"), ("Alpha*", "SOe")], 
-    operator="and"
-)
-
-fuzzy_nav.add_rule(
-    [
-        ("NO Distance", "Very Near"), 
-        ("NE Distance", "Very Near"), 
-        ("NW Distance", "Near"), 
-        ("ES Distance", "Very Near"), 
-        ("WE Distance", "Near")
-    ], 
-    [("D*", "Very Near"), ("Alpha*", "SOw")], 
-    operator="and"
-)
-
 class FuzzySystem:
     def __init__(self):
         self.variables = {}
@@ -251,6 +109,148 @@ class FuzzySystem:
             results[var_name] = np.sum(final_mf * universe) / sum_mu if sum_mu > 0 else np.mean(universe)
         return results
 
+fuzzy_nav = FuzzySystem()
+
+# Inputs
+fuzzy_nav.add_variable("Goal Distance", 0.0, 5.0)
+fuzzy_nav.add_term("Goal Distance", "Very Near", "Gaussian", [1.0, 0.5], saturate="Left")
+fuzzy_nav.add_term("Goal Distance", "Near", "Gaussian", [2.0, 0.5])
+fuzzy_nav.add_term("Goal Distance", "Far", "Gaussian", [3.0, 0.5], saturate="Right")
+
+fuzzy_nav.add_variable("Goal Orientation", -np.pi, np.pi)
+fuzzy_nav.add_term("Goal Orientation", "Right", "Gaussian", [-np.pi / 2, 0.5], saturate="Left")
+fuzzy_nav.add_term("Goal Orientation", "Center", "Gaussian", [0.0, 0.5])
+fuzzy_nav.add_term("Goal Orientation", "Left", "Gaussian", [np.pi / 2, 0.5], saturate="Right")
+
+wind_rose_keys = [
+    "SW Distance",
+    "WE Distance",
+    "NW Distance",
+    "NO Distance",
+    "NE Distance",
+    "ES Distance",
+    "SE Distance",
+    "SO Distance",
+]
+for k in wind_rose_keys:
+    fuzzy_nav.add_variable(k, 0.0, 5.0)
+    fuzzy_nav.add_term(k, "Very Near", "Gaussian", [0.4, 0.15], saturate="Left")
+    fuzzy_nav.add_term(k, "Near", "Gaussian", [0.8, 0.15])
+    fuzzy_nav.add_term(k, "Far", "Gaussian", [1.2, 0.15], saturate="Right")
+
+# Outputs
+fuzzy_nav.add_variable("D*", 0.0, 1.0)
+fuzzy_nav.add_term("D*", "Very Near", "Gaussian", [0.0, 0.15])
+fuzzy_nav.add_term("D*", "Near", "Gaussian", [0.4, 0.15])
+fuzzy_nav.add_term("D*", "Far", "Gaussian", [0.8, 0.15], saturate="Right")
+
+fuzzy_nav.add_variable("Alpha*", -np.pi, np.pi)
+fuzzy_nav.add_term("Alpha*", "SOe", "Gaussian", [np.pi, 0.5])
+fuzzy_nav.add_term("Alpha*", "SE", "Gaussian", [3.0 * np.pi / 4.0, 0.5])
+fuzzy_nav.add_term("Alpha*", "ES", "Gaussian", [np.pi / 2.0, 0.5])
+fuzzy_nav.add_term("Alpha*", "NE", "Gaussian", [np.pi / 4.0, 0.5])
+fuzzy_nav.add_term("Alpha*", "NO", "Gaussian", [0.0, 0.5])
+fuzzy_nav.add_term("Alpha*", "NW", "Gaussian", [-np.pi / 4.0, 0.5])
+fuzzy_nav.add_term("Alpha*", "WE", "Gaussian", [-np.pi / 2.0, 0.5])
+fuzzy_nav.add_term("Alpha*", "SW", "Gaussian", [-3.0 * np.pi / 4.0, 0.5])
+fuzzy_nav.add_term("Alpha*", "SOw", "Gaussian", [-np.pi, 0.5])
+
+fuzzy_nav.add_variable("Subgoal Confidence", 0.0, 1.0)
+fuzzy_nav.add_term("Subgoal Confidence", "Low", "Gaussian", [0.0, 0.2])
+fuzzy_nav.add_term("Subgoal Confidence", "Medium", "Gaussian", [0.5, 0.2])
+fuzzy_nav.add_term("Subgoal Confidence", "High", "Gaussian", [1.0, 0.2])
+
+# If everything is far away, explore terrain
+fuzzy_nav.add_rule(
+    [("NO Distance", "Far"), ("WE Distance", "Far"), ("ES Distance", "Far")], 
+    [("D*", "Far"), ("Alpha*", "NO")], 
+    operator="and"
+)
+
+# If there isn't anything close to a direction, go full speed at it
+fuzzy_nav.add_rule(
+    [("NO Distance", "Far")], 
+    [("D*", "Far"), ("Alpha*", "NO")], 
+    operator="or"
+)
+
+fuzzy_nav.add_rule(
+    [("NW Distance", "Near")], 
+    [("D*", "Near"), ("Alpha*", "NW")], 
+    operator="or"
+)
+
+fuzzy_nav.add_rule(
+    [("NE Distance", "Near")], 
+    [("D*", "Near"), ("Alpha*", "NE")], 
+    operator="or"
+)
+
+# Follow a narrow corridor carefuly
+fuzzy_nav.add_rule(
+    [("NO Distance", "Far"), ("WE Distance", "Very Near"), ("ES Distance", "Very Near")], 
+    [("D*", "Near"), ("Alpha*", "NO")], 
+    operator="and"
+)
+
+# Sprint through a wide corridor 
+fuzzy_nav.add_rule(
+    [("NO Distance", "Far"), ("WE Distance", "Near"), ("ES Distance", "Near")], 
+    [("D*", "Near"), ("Alpha*", "NO")], 
+    operator="and"
+)
+
+# Stay centered on corridor
+fuzzy_nav.add_rule(
+    [("ES Distance", "Very Near"), ("WE Distance", "Near"), ("NO Distance", "Far")], 
+    [("D*", "Near"), ("Alpha*", "NW")], 
+    operator="and"
+)
+
+fuzzy_nav.add_rule(
+    [("ES Distance", "Near"), ("WE Distance", "Very Near"), ("NO Distance", "Far")], 
+    [("D*", "Near"), ("Alpha*", "NE")], 
+    operator="and"
+)
+
+# Turn on L-shape corridor
+fuzzy_nav.add_rule(
+    [("NO Distance", "Near"), ("WE Distance", "Very Near"), ("ES Distance", "Near")], 
+    [("D*", "Very Near"), ("Alpha*", "NE")], 
+    operator="and"
+)
+
+fuzzy_nav.add_rule(
+    [("NO Distance", "Near"), ("WE Distance", "Near"), ("ES Distance", "Very Near")], 
+    [("D*", "Very Near"), ("Alpha*", "NW")], 
+    operator="and"
+)
+
+# Deadlock detected, turn around
+fuzzy_nav.add_rule(
+    [
+        ("NO Distance", "Very Near"), 
+        ("NE Distance", "Near"), 
+        ("NW Distance", "Very Near"), 
+        ("ES Distance", "Near"), 
+        ("WE Distance", "Very Near")
+    ], 
+    [("D*", "Very Near"), ("Alpha*", "SOe")], 
+    operator="and"
+)
+
+fuzzy_nav.add_rule(
+    [
+        ("NO Distance", "Very Near"), 
+        ("NE Distance", "Very Near"), 
+        ("NW Distance", "Near"), 
+        ("ES Distance", "Very Near"), 
+        ("WE Distance", "Near")
+    ], 
+    [("D*", "Very Near"), ("Alpha*", "SOw")], 
+    operator="and"
+)
+
 def get_robot_goal_states(robot_position, robot_orientation, target_position):
     x, y = robot_position
     x_t, y_t = target_position
@@ -274,16 +274,16 @@ def wrap_to_pi(angle):
 def alpha_to_wind_rose(alpha):
     alpha = wrap_to_pi(alpha)
 
-    # Sector boundaries (22.5° each side)
+    # Sector boundaries of 45°
     sector_edges = [
-        (-np.pi/8,  np.pi/8,   'NO'),
-        ( np.pi/8,  3*np.pi/8, 'NE'),
-        (3*np.pi/8, 5*np.pi/8, 'ES'),
-        (5*np.pi/8, 7*np.pi/8, 'SE'),
-        (7*np.pi/8, -7*np.pi/8,'SO'),  
-        (-7*np.pi/8,-5*np.pi/8,'SW'),
-        (-5*np.pi/8,-3*np.pi/8,'WE'),
-        (-3*np.pi/8,-np.pi/8,  'NW')
+        (-np.pi/8,  np.pi/8,   "NO"),
+        ( np.pi/8,  3*np.pi/8, "NE"),
+        (3*np.pi/8, 5*np.pi/8, "ES"),
+        (5*np.pi/8, 7*np.pi/8, "SE"),
+        (7*np.pi/8, -7*np.pi/8,"SO"),  
+        (-7*np.pi/8,-5*np.pi/8,"SW"),
+        (-5*np.pi/8,-3*np.pi/8,"WE"),
+        (-3*np.pi/8,-np.pi/8,  "NW")
     ]
 
     for low, high, label in sector_edges:
@@ -295,7 +295,7 @@ def alpha_to_wind_rose(alpha):
                 return label
 
     # Fallback (should never happen)
-    return 'NO'
+    return "NO"
 
 class FuzzyPlanner(Node):
     def __init__(self):
@@ -401,7 +401,7 @@ class FuzzyPlanner(Node):
                 )
 
             else:
-                v, omega = control_laws(D_star, Dd, -alpha_star, Kv, Kw)
+                v, omega = control_laws(D_star, Dd, alpha_star, Kv, Kw)
 
                 self.create_marker(
                     xg = self.robot_position[0] + D * np.cos(self.robot_orientation - alpha_star),
