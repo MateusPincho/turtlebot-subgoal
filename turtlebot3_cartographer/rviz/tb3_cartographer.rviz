@@ -382,6 +382,19 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /fuzzy_subgoal
       Value: true
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Marker
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /fuzzy_subgoal
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -435,11 +448,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 369.4035339355469
+      Scale: 171.55250549316406
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz_default_plugins)
-      X: -0.32207128405570984
-      Y: 0.7005077600479126
+      X: 0.5333616137504578
+      Y: -0.4093893766403198
     Saved: ~
 Window Geometry:
   Displays:
