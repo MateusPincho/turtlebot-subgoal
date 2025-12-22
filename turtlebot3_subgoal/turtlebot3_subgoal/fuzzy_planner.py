@@ -344,6 +344,9 @@ class FuzzyPlanner(Node):
         distances = list(msg.data)[:5]
         wind_rose = {k: d for d, k in zip(distances, ["NW", "NO", "NE", "ES", "WE"])}
 
+        for missing_sector in ["SE", "SW", "SO"]:
+            wind_rose[missing_sector] = 0.0
+
         # Get the latest available transform from /map to /base_link
         try:
             # Try to look up the transform
@@ -425,7 +428,7 @@ class FuzzyPlanner(Node):
 
         self.get_logger().info("Not enough info...")
 
-    def create_marker(self, xg, yg, mode):
+    def create_marker(self, xg, yg):
         marker = Marker()
         marker.header.frame_id = "map"
         marker.type = Marker.SPHERE
@@ -438,20 +441,9 @@ class FuzzyPlanner(Node):
 
         # Set the color (RGBA)
         marker.color.a = 1.0 # Opaque
-        if mode == "Navigating":
-            marker.color.r = 1.0
-            marker.color.g = 1.0
-            marker.color.b = 0.0
-
-        elif mode == "Goal Seeking":
-            marker.color.r = 0.0
-            marker.color.g = 1.0
-            marker.color.b = 0.0
-
-        else:
-            marker.color.r = 0.0
-            marker.color.g = 0.0
-            marker.color.b = 0.0
+        marker.color.r = 1.0
+        marker.color.g = 0.0
+        marker.color.b = 0.0
 
         marker.pose.position.x = xg
         marker.pose.position.y = yg
