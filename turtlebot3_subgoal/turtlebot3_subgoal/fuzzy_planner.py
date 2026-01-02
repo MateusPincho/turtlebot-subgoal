@@ -129,9 +129,7 @@ fuzzy_nav = FuzzySystem()
 
 # Inputs
 fuzzy_nav.add_variable("Goal Distance", 0.0, 5.0)
-fuzzy_nav.add_term(
-    "Goal Distance", "Very Near", "Gaussian", [0.4, 0.15], saturate="Left"
-)
+fuzzy_nav.add_term("Goal Distance", "Very Near", "Gaussian", [0.4, 0.15], saturate="Left")
 fuzzy_nav.add_term("Goal Distance", "Near", "Gaussian", [0.8, 0.15])
 fuzzy_nav.add_term("Goal Distance", "Far", "Gaussian", [1.2, 0.15], saturate="Right")
 
@@ -185,55 +183,73 @@ fuzzy_nav.add_term("Confidence", "Medium", "Gaussian", [0.80, 0.1])
 fuzzy_nav.add_term("Confidence", "High", "Gaussian", [1.0, 0.1])
 
 # If there isn't anything close to a direction ahead, steer to goal direction
-for orientation in ["NW", "NO", "NE", "ES", "WE"]:
+goal_blockers = {
+    "NW": "NW Distance",
+    "NO": "NO Distance",
+    "NE": "NE Distance",
+}
+
+# If both diagonals are Very Near, the forces cancel out: Go Straight
+fuzzy_nav.add_rule(
+    [("NW Distance", "Near"), ("NE Distance", "Near"), ("NO Distance", "Far")],
+    [("D*", "Near"), ("Alpha*", "NO")],
+    operator="and"
+)
+
+# Bridge the gap between 'Far' and 'Blocked'
+for orientation, sensor in goal_blockers.items():
     fuzzy_nav.add_rule(
-        [
-            ("NO Distance", "Far"),
-            ("NW Distance", "Far"),
-            ("NE Distance", "Far"),
-            ("Goal Orientation", orientation),
-        ],
-        [("D*", "Far"), ("Alpha*", orientation)],
-        operator="and",
+        [(sensor, "Near"), ("Goal Orientation", orientation)],
+        [("D*", "Near"), ("Alpha*", orientation)],
+        operator="and"
     )
 
-# Go through bifurcations
+# If open space, stop worrying about side-centering
 fuzzy_nav.add_rule(
-    [("NO Distance", "Near"), ("NW Distance", "Far")],
-    [("D*", "Far"), ("Alpha*", "NW")],
-    operator="and",
+    [("NO Distance", "Far"), ("NW Distance", "Far"), ("NE Distance", "Far")],
+    [("D*", "Near"), ("Alpha*", "NO")],
+    operator="and"
 )
 
+# If front is Near but sides are open, keep moving but slow down
 fuzzy_nav.add_rule(
-    [("NO Distance", "Near"), ("NE Distance", "Far")],
-    [("D*", "Near"), ("Alpha*", "NE")],
-    operator="and",
+    [("NO Distance", "Near"), ("WE Distance", "Far"), ("ES Distance", "Far")],
+    [("D*", "Very Near"), ("Alpha*", "NO")],
+    operator="and"
 )
+
+# If path to goal is free, go to it
+for orientation, sensor in goal_blockers.items():
+    fuzzy_nav.add_rule(
+        [(sensor, "Far"), ("Goal Orientation", orientation)], # Only check the relevant path
+        [("D*", "Near"), ("Alpha*", orientation)],
+        operator="and"
+    )
 
 # Avoid colliding with walls when not in a deadlock
 fuzzy_nav.add_rule(
-    [("NW Distance", "Very Near"), ("NO Distance", "Far")],
-    [("D*", "Near"), ("Alpha*", "ES")],
-    operator="and",
+    [("WE Distance", "Very Near"), ("NW Distance", "Very Near"), ("NO Distance", "Far")], 
+    [("D*", "Near"), ("Alpha*", "NE")], 
+    operator="and"
 )
 
 fuzzy_nav.add_rule(
-    [("NE Distance", "Very Near"), ("NO Distance", "Far")],
-    [("D*", "Near"), ("Alpha*", "WE")],
-    operator="and",
+    [("ES Distance", "Very Near"), ("NE Distance", "Very Near"), ("NO Distance", "Far")], 
+    [("D*", "Near"), ("Alpha*", "NW")], 
+    operator="and"
 )
 
 # Stay centered on corridors
 fuzzy_nav.add_rule(
-    [("NW Distance", "Near"), ("NE Distance", "Very Near")],
-    [("D*", "Near"), ("Alpha*", "NW")],
-    operator="and",
+    [("NW Distance", "Near"), ("NE Distance", "Very Near")], 
+    [("D*", "Near"), ("Alpha*", "NW")], 
+    operator="and"
 )
 
 fuzzy_nav.add_rule(
-    [("NE Distance", "Near"), ("NW Distance", "Very Near")],
-    [("D*", "Near"), ("Alpha*", "NE")],
-    operator="and",
+    [("NE Distance", "Near"), ("NW Distance", "Very Near")], 
+    [("D*", "Near"), ("Alpha*", "NE")], 
+    operator="and"
 )
 
 # Follow a narrow corridor carefuly
@@ -244,26 +260,6 @@ fuzzy_nav.add_rule(
         ("ES Distance", "Very Near"),
     ],
     [("D*", "Near"), ("Alpha*", "NO")],
-    operator="and",
-)
-
-# Sprint through a wide corridor
-fuzzy_nav.add_rule(
-    [("NO Distance", "Far"), ("WE Distance", "Near"), ("ES Distance", "Near")],
-    [("D*", "Far"), ("Alpha*", "NO")],
-    operator="and",
-)
-
-# Turn on L-shape corridor
-fuzzy_nav.add_rule(
-    [("NO Distance", "Near"), ("WE Distance", "Very Near"), ("ES Distance", "Near")],
-    [("D*", "Very Near"), ("Alpha*", "NE")],
-    operator="and",
-)
-
-fuzzy_nav.add_rule(
-    [("NO Distance", "Near"), ("WE Distance", "Near"), ("ES Distance", "Very Near")],
-    [("D*", "Very Near"), ("Alpha*", "NW")],
     operator="and",
 )
 
@@ -300,6 +296,7 @@ def get_robot_goal_states(robot_position, robot_orientation, target_position):
     phi = np.arctan2((y_t - y), (x_t - x))
     theta = robot_orientation
     alpha = theta - phi
+    alpha = np.arctan2(np.sin(alpha), np.cos(alpha))
 
     return D, alpha
 
@@ -389,9 +386,6 @@ class FuzzyPlanner(Node):
 
         distances = list(msg.data)[:5]
         wind_rose = {k: d for d, k in zip(distances, ["NW", "NO", "NE", "ES", "WE"])}
-
-        for missing_sector in ["SE", "SW", "SO"]:
-            wind_rose[missing_sector] = 0.0
 
         # Get the latest available transform from /map to /base_link
         try:
