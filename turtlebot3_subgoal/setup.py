@@ -30,7 +30,10 @@ setup(
             'lidar_distance = turtlebot3_subgoal.lidar_distance:main',
             'lidar_distance_isaac = turtlebot3_subgoal.lidar_distance_isaac:main',
             'fuzzy_planner = turtlebot3_subgoal.fuzzy_planner:main',
-            'detect_gaps = turtlebot3_subgoal.detect_gaps:main'
+            'detect_gaps = turtlebot3_subgoal.detect_gaps:main',
+            'fuzzy_with_derivative = turtlebot3_subgoal.fuzzy_planner_with_dt:main',
+            'fuzzy_gap_planner = turtlebot3_subgoal.fuzzy_gap_planner:main',
+            'improved_detect_gaps = turtlebot3_subgoal.improved_detect_gaps:main'
         ],
     },
 )
