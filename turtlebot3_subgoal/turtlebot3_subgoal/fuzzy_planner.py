@@ -129,7 +129,7 @@ fuzzy_nav = FuzzySystem()
 
 # Inputs
 fuzzy_nav.add_variable("Goal Distance", 0.0, 5.0)
-fuzzy_nav.add_term("Goal Distance", "Very Near", "Gaussian", [0.4, 0.15], saturate="Left")
+fuzzy_nav.add_term("Goal Distance", "Very Near", "Gaussian", [0.45, 0.15], saturate="Left")
 fuzzy_nav.add_term("Goal Distance", "Near", "Gaussian", [0.8, 0.15])
 fuzzy_nav.add_term("Goal Distance", "Far", "Gaussian", [1.2, 0.15], saturate="Right")
 
@@ -156,7 +156,7 @@ wind_rose_keys = [
 ]
 for k in wind_rose_keys:
     fuzzy_nav.add_variable(k, 0.0, 5.0)
-    fuzzy_nav.add_term(k, "Very Near", "Gaussian", [0.4, 0.15], saturate="Left")
+    fuzzy_nav.add_term(k, "Very Near", "Gaussian", [0.45, 0.15], saturate="Left")
     fuzzy_nav.add_term(k, "Near", "Gaussian", [0.8, 0.15])
     fuzzy_nav.add_term(k, "Far", "Gaussian", [1.2, 0.15], saturate="Right")
 
