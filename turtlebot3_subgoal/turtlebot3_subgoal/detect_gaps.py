@@ -1,5 +1,6 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data, QoSProfile
 import numpy as np
 from sensor_msgs.msg import LaserScan
 from visualization_msgs.msg import Marker, MarkerArray
@@ -14,7 +15,7 @@ class GapDetectorNode(Node):
         self.ds = 1.5  # Aumentei o range para o Isaac Sim
         self.min_beam_n = 0 
 
-        self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
+        self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, qos_profile_sensor_data)
         self.marker_pub = self.create_publisher(MarkerArray, '/detected_gaps', 10)
 
     def calculate_n_min(self, angular_res):
