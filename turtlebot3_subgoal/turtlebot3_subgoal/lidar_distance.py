@@ -20,7 +20,7 @@ class LidarSectorNode(Node):
             qos_profile_sensor_data)
 
         # Publish Markers for visualization in RVIZ
-        self.marker_pub = self.create_publisher(MarkerArray, 'sector_markers', 10)
+        self.marker_pub = self.create_publisher(MarkerArray, '/sector_markers', 10)
         
         # Publish the Lidar Sectors distance
         self.sector_pub = self.create_publisher(Float32MultiArray, '/lidar_sectors', 10)
